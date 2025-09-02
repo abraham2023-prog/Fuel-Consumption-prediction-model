@@ -1,60 +1,27 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
-import joblib
-import io
+import random
 
 # Set page configuration
 st.set_page_config(
-    page_title="Fuel Consumption Forecasting",
+    page_title="Synthetic Fuel Data Generator",
     page_icon="⛽",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # Custom CSS
 st.markdown("""
 <style>
     .main-header {
-        font-size: 3rem;
+        font-size: 2.5rem;
         color: #2c3e50;
-        background-color: #f8f9fa;
         padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 2rem;
         text-align: center;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    .sub-header {
-        font-size: 1.5rem;
-        color: #3498db;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 0.5rem;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-    }
-    .result-box {
-        background-color: #ecf0f1;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 1rem;
-        text-align: center;
-    }
-    .result-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #3498db;
-    }
-    .insight-box {
+    .highlight {
         background-color: #e8f4fc;
         padding: 1rem;
         border-radius: 0.5rem;
@@ -69,393 +36,224 @@ st.markdown("""
         color: white;
         border-radius: 0.5rem;
     }
-    .stButton>button {
-        background-color: #3498db;
-        color: white;
-        font-weight: bold;
-    }
-    .model-card {
-        background-color: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 1rem;
-        border-left: 5px solid #3498db;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # Header
-st.markdown('<h1 class="main-header">Fuel Consumption Forecasting Dashboard</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">Synthetic Fuel Consumption Dataset Generator</h1>', unsafe_allow_html=True)
 
 # Introduction
-st.write("""
-This dashboard helps you forecast fuel consumption for agricultural operations and estimate associated costs.
-You can upload historical data, train machine learning models, and make predictions based on your specific operation parameters.
-""")
+st.markdown("""
+<div class="highlight">
+This tool generates a synthetic dataset for fuel consumption forecasting in agricultural operations.
+You can customize the dataset size and parameters to match your needs.
+</div>
+""", unsafe_allow_html=True)
 
-# Initialize session state for ML models and data
-if 'trained_models' not in st.session_state:
-    st.session_state.trained_models = {}
-if 'historical_data' not in st.session_state:
-    st.session_state.historical_data = None
-if 'encoders' not in st.session_state:
-    st.session_state.encoders = {}
+# Sidebar for configuration
+with st.sidebar:
+    st.header("Dataset Configuration")
+    
+    num_records = st.slider("Number of Records", 100, 10000, 1000)
+    
+    st.subheader("Tractor Models")
+    tractor_options = {
+        "John Deere 6150M (150 HP)": 1.0,
+        "New Holland T7.270 (270 HP)": 1.2,
+        "Case IH Steiger 450 (450 HP)": 1.5,
+        "Massey Ferguson 8700 (250 HP)": 1.1,
+        "Kubota M7-131 (131 HP)": 0.9
+    }
+    selected_tractors = {}
+    for tractor, factor in tractor_options.items():
+        selected_tractors[tractor] = st.checkbox(tractor, value=True)
+    
+    st.subheader("Operation Types")
+    operation_options = {
+        "Plowing": 12,
+        "Harvesting": 8,
+        "Seeding": 5,
+        "Spraying": 3,
+        "Fertilizing": 4
+    }
+    selected_operations = {}
+    for operation, base_cons in operation_options.items():
+        selected_operations[operation] = st.checkbox(operation, value=True)
+    
+    st.subheader("Soil Conditions")
+    soil_options = {
+        "Dry": 0.9,
+        "Normal": 1.0,
+        "Wet": 1.2,
+        "Very Wet": 1.5
+    }
+    selected_soils = {}
+    for soil, factor in soil_options.items():
+        selected_soils[soil] = st.checkbox(soil, value=True)
+    
+    add_noise = st.checkbox("Add realistic noise/variation", value=True)
+    include_load = st.checkbox("Include load weight data", value=True)
 
-# Sidebar for navigation
-st.sidebar.title("Navigation")
-app_mode = st.sidebar.selectbox("Choose Mode", 
-                               ["Data Upload", "Model Training", "Prediction", "Model Comparison"])
+# Generate the dataset
+def generate_synthetic_data(num_records, tractors, operations, soils, add_noise, include_load):
+    records = []
+    
+    # Filter selected options
+    selected_tractor_list = [t for t, selected in tractors.items() if selected]
+    selected_operation_list = [o for o, selected in operations.items() if selected]
+    selected_soil_list = [s for s, selected in soils.items() if selected]
+    
+    if not selected_tractor_list or not selected_operation_list or not selected_soil_list:
+        st.error("Please select at least one option in each category")
+        return None
+    
+    for _ in range(num_records):
+        # Randomly select parameters
+        tractor = random.choice(selected_tractor_list)
+        operation = random.choice(selected_operation_list)
+        soil = random.choice(selected_soil_list)
+        
+        # Base consumption for the operation type
+        base_consumption = operation_options[operation]
+        
+        # Apply tractor factor
+        tractor_factor = tractor_options[tractor]
+        
+        # Apply soil factor
+        soil_factor = soil_options[soil]
+        
+        # Generate area (hectares)
+        area = round(random.uniform(10, 500), 2)
+        
+        # Generate load weight if included
+        load_weight = 0
+        load_factor = 1.0
+        if include_load and random.random() > 0.3:  # 70% of records have load
+            load_weight = random.randint(500, 5000)
+            load_factor = 1 + (load_weight / 10000)
+        
+        # Calculate base fuel consumption
+        fuel_per_hectare = base_consumption * tractor_factor * soil_factor * load_factor
+        
+        # Add noise if requested
+        if add_noise:
+            noise = random.normalvariate(1, 0.1)  # 10% noise
+            fuel_per_hectare *= noise
+        
+        # Ensure reasonable values
+        fuel_per_hectare = max(1, round(fuel_per_hectare, 2))
+        
+        # Calculate total fuel
+        total_fuel = round(fuel_per_hectare * area, 2)
+        
+        # Create record
+        record = {
+            "area_hectares": area,
+            "tractor_model": tractor,
+            "operation_type": operation,
+            "soil_condition": soil,
+            "load_weight_kg": load_weight,
+            "fuel_per_hectare": fuel_per_hectare,
+            "total_fuel_liters": total_fuel
+        }
+        
+        records.append(record)
+    
+    return pd.DataFrame(records)
 
-# Data Upload Section
-if app_mode == "Data Upload":
-    st.markdown('<h2 class="sub-header">Upload Historical Data</h2>', unsafe_allow_html=True)
-    
-    st.info("""
-    Upload a CSV file with historical fuel consumption data. The file should include columns for:
-    - Area covered (hectares)
-    - Tractor model
-    - Operation type
-    - Soil condition
-    - Load weight (if available)
-    - Fuel consumption (liters per hectare or total liters)
-    """)
-    
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-    
-    if uploaded_file is not None:
-        try:
-            # Read the CSV file
-            df = pd.read_csv(uploaded_file)
-            st.session_state.historical_data = df
-            
-            # Display basic information about the dataset
-            st.success("Data successfully uploaded!")
-            st.write("**Dataset Overview:**")
-            st.write(f"Number of records: {df.shape[0]}")
-            st.write(f"Number of features: {df.shape[1]}")
-            
-            # Show first few rows
-            st.write("**First 5 rows of the dataset:**")
-            st.dataframe(df.head())
-            
-            # Show column information
-            st.write("**Column Information:**")
-            col_info = pd.DataFrame({
-                'Column Name': df.columns,
-                'Data Type': df.dtypes.values,
-                'Missing Values': df.isnull().sum().values,
-                'Unique Values': [df[col].nunique() for col in df.columns]
-            })
-            st.dataframe(col_info)
-            
-            # Check if target variable exists
-            if 'fuel_consumption' not in df.columns and 'fuel_per_hectare' not in df.columns:
-                st.warning("No obvious fuel consumption column found. Please ensure your data includes a target variable.")
-            
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
-
-# Model Training Section
-elif app_mode == "Model Training":
-    st.markdown('<h2 class="sub-header">Train Machine Learning Models</h2>', unsafe_allow_html=True)
-    
-    if st.session_state.historical_data is None:
-        st.warning("Please upload historical data first in the 'Data Upload' section.")
-    else:
-        df = st.session_state.historical_data
-        
-        # Select target variable
-        st.write("### Select Target Variable")
-        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        target_variable = st.selectbox("Choose the target variable (fuel consumption)", numeric_columns)
-        
-        # Select features
-        st.write("### Select Features")
-        feature_columns = st.multiselect("Choose features for the model", 
-                                        [col for col in df.columns if col != target_variable],
-                                        default=[col for col in df.columns if col != target_variable and df[col].nunique() < 20])
-        
-        if not feature_columns:
-            st.warning("Please select at least one feature.")
-        else:
-            # Prepare the data
-            X = df[feature_columns].copy()
-            y = df[target_variable]
-            
-            # Handle categorical variables
-            categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
-            for col in categorical_cols:
-                le = LabelEncoder()
-                X[col] = le.fit_transform(X[col].astype(str))
-                st.session_state.encoders[col] = le
-            
-            # Split the data
-            test_size = st.slider("Test Set Size (%)", 10, 40, 20)
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size/100, random_state=42)
-            
-            # Select models to train
-            st.write("### Select Models to Train")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                train_lr = st.checkbox("Linear Regression", value=True)
-            
-            with col2:
-                train_rf = st.checkbox("Random Forest", value=True)
-            
-            # Train models
-            if st.button("Train Models"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                models = {}
-                results = {}
-                
-                # Linear Regression
-                if train_lr:
-                    status_text.text("Training Linear Regression...")
-                    lr = LinearRegression()
-                    lr.fit(X_train, y_train)
-                    models['Linear Regression'] = lr
-                    
-                    # Evaluate
-                    y_pred = lr.predict(X_test)
-                    mae = mean_absolute_error(y_test, y_pred)
-                    r2 = r2_score(y_test, y_pred)
-                    results['Linear Regression'] = {'MAE': mae, 'R2': r2}
-                    progress_bar.progress(50)
-                
-                # Random Forest
-                if train_rf:
-                    status_text.text("Training Random Forest...")
-                    rf = RandomForestRegressor(n_estimators=100, random_state=42)
-                    rf.fit(X_train, y_train)
-                    models['Random Forest'] = rf
-                    
-                    # Evaluate
-                    y_pred = rf.predict(X_test)
-                    mae = mean_absolute_error(y_test, y_pred)
-                    r2 = r2_score(y_test, y_pred)
-                    results['Random Forest'] = {'MAE': mae, 'R2': r2}
-                    progress_bar.progress(100)
-                
-                # Store models and results
-                st.session_state.trained_models = models
-                st.session_state.model_results = results
-                st.session_state.feature_columns = feature_columns
-                st.session_state.target_variable = target_variable
-                
-                status_text.text("Training completed!")
-                
-                # Display results
-                st.write("### Model Performance")
-                results_df = pd.DataFrame.from_dict(results, orient='index')
-                st.dataframe(results_df.style.format("{:.3f}").highlight_min(axis=0, color='#c8e6c9').highlight_max(axis=0, color='#ffcdd2'))
-                
-                # Feature importance for Random Forest
-                if 'Random Forest' in models:
-                    st.write("### Feature Importance (Random Forest)")
-                    feature_importance = pd.DataFrame({
-                        'feature': feature_columns,
-                        'importance': models['Random Forest'].feature_importances_
-                    }).sort_values('importance', ascending=False)
-                    
-                    fig = px.bar(feature_importance, x='importance', y='feature', 
-                                title='Feature Importance for Random Forest Model')
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Download trained models
-                st.write("### Download Trained Models")
-                for model_name, model in models.items():
-                    buffer = io.BytesIO()
-                    joblib.dump(model, buffer)
-                    st.download_button(
-                        label=f"Download {model_name}",
-                        data=buffer.getvalue(),
-                        file_name=f"{model_name.replace(' ', '_').lower()}_model.pkl",
-                        mime="application/octet-stream"
-                    )
-
-# Prediction Section
-elif app_mode == "Prediction":
-    st.markdown('<h2 class="sub-header">Make Predictions</h2>', unsafe_allow_html=True)
-    
-    if not st.session_state.trained_models:
-        st.warning("Please train models first in the 'Model Training' section.")
-    else:
-        # Get the best model based on R2 score
-        best_model_name = max(st.session_state.model_results.items(), key=lambda x: x[1]['R2'])[0]
-        best_model = st.session_state.trained_models[best_model_name]
-        
-        st.info(f"Using {best_model_name} for predictions (best performing model)")
-        
-        # Create input form based on feature columns
-        st.write("### Input Parameters")
-        input_data = {}
-        
-        # Create columns for better layout
-        cols = st.columns(2)
-        col_idx = 0
-        
-        for feature in st.session_state.feature_columns:
-            with cols[col_idx]:
-                if feature in st.session_state.encoders:
-                    # Categorical feature
-                    options = list(st.session_state.encoders[feature].classes_)
-                    input_data[feature] = st.selectbox(feature, options)
-                else:
-                    # Numerical feature
-                    # Try to get min and max from historical data if available
-                    df = st.session_state.historical_data
-                    if df is not None and feature in df.columns:
-                        min_val = float(df[feature].min())
-                        max_val = float(df[feature].max())
-                        default_val = float(df[feature].mean())
-                        input_data[feature] = st.slider(feature, min_val, max_val, default_val)
-                    else:
-                        input_data[feature] = st.number_input(feature, value=0.0)
-            
-            col_idx = (col_idx + 1) % 2
-        
-        # Add fuel price for cost calculation
-        fuel_price = st.slider("Fuel Price (per liter $)", 0.5, 3.0, 1.5, step=0.05)
-        
-        # Make prediction
-        if st.button("Predict Fuel Consumption"):
-            # Prepare input data for prediction
-            prediction_df = pd.DataFrame([input_data])
-            
-            # Encode categorical variables
-            for col in prediction_df.columns:
-                if col in st.session_state.encoders:
-                    le = st.session_state.encoders[col]
-                    # Handle unseen labels
-                    prediction_df[col] = prediction_df[col].apply(lambda x: x if x in le.classes_ else le.classes_[0])
-                    prediction_df[col] = le.transform(prediction_df[col])
-            
-            # Make prediction
-            prediction = best_model.predict(prediction_df)[0]
-            
-            # Display results
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown('<div class="result-box">', unsafe_allow_html=True)
-                st.metric("Predicted Consumption", f"{prediction:.2f} {st.session_state.target_variable}")
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # If we're predicting per hectare and have area, calculate total
-            if 'area' in input_data and 'hectare' in st.session_state.target_variable.lower():
-                total_fuel = prediction * input_data['area']
-                with col2:
-                    st.markdown('<div class="result-box">', unsafe_allow_html=True)
-                    st.metric("Total Fuel", f"{total_fuel:.2f} L")
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                total_cost = total_fuel * fuel_price
-                with col3:
-                    st.markdown('<div class="result-box">', unsafe_allow_html=True)
-                    st.metric("Estimated Cost", f"${total_cost:.2f}")
-                    st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Generate insights
-            st.write("### Insights")
-            
-            # Compare with average from historical data
-            if st.session_state.historical_data is not None:
-                avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
-                
-                if prediction > avg_consumption * 1.2:
-                    st.warning(f"""
-                    **Higher than Average Consumption**
-                    
-                    Your predicted consumption is {((prediction/avg_consumption)-1)*100:.1f}% higher than the historical average.
-                    Consider optimizing your operation parameters.
-                    """)
-                elif prediction < avg_consumption * 0.8:
-                    st.success(f"""
-                    **Lower than Average Consumption**
-                    
-                    Your predicted consumption is {((1-prediction/avg_consumption))*100:.1f}% lower than the historical average.
-                    Good job on selecting efficient parameters!
-                    """)
-                else:
-                    st.info(f"""
-                    **Average Consumption**
-                    
-                    Your predicted consumption is close to the historical average.
-                    """)
-
-# Model Comparison Section
-elif app_mode == "Model Comparison":
-    st.markdown('<h2 class="sub-header">Model Comparison</h2>', unsafe_allow_html=True)
-    
-    if not st.session_state.trained_models:
-        st.warning("Please train models first in the 'Model Training' section.")
-    else:
-        # Display model performance comparison
-        st.write("### Model Performance Metrics")
-        results_df = pd.DataFrame.from_dict(st.session_state.model_results, orient='index')
-        st.dataframe(results_df.style.format("{:.3f}").highlight_min(axis=0, color='#c8e6c9').highlight_max(axis=0, color='#ffcdd2'))
-        
-        # Visual comparison
-        fig = go.Figure()
-        
-        for model_name, metrics in st.session_state.model_results.items():
-            fig.add_trace(go.Bar(
-                name=model_name,
-                x=list(metrics.keys()),
-                y=list(metrics.values()),
-                text=[f'{v:.3f}' for v in metrics.values()],
-                textposition='auto'
-            ))
-        
-        fig.update_layout(
-            title='Model Performance Comparison',
-            barmode='group',
-            yaxis_title='Metric Value'
+# Generate and display dataset
+if st.button("Generate Dataset"):
+    with st.spinner("Generating synthetic data..."):
+        df = generate_synthetic_data(
+            num_records, 
+            selected_tractors, 
+            selected_operations, 
+            selected_soils, 
+            add_noise, 
+            include_load
         )
+    
+    if df is not None:
+        st.success(f"Successfully generated {len(df)} records!")
         
-        st.plotly_chart(fig, use_container_width=True)
+        # Show dataset info
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Number of Records", len(df))
+        with col2:
+            st.metric("Number of Features", len(df.columns))
+        with col3:
+            avg_fuel = df['fuel_per_hectare'].mean()
+            st.metric("Avg Fuel per Hectare", f"{avg_fuel:.2f} L")
         
-        # Feature importance comparison
-        st.write("### Feature Importance Comparison")
+        # Show first few rows
+        st.subheader("Dataset Preview")
+        st.dataframe(df.head(10))
         
-        # Check if we have tree-based models
-        tree_models = {name: model for name, model in st.session_state.trained_models.items() 
-                      if hasattr(model, 'feature_importances_')}
+        # Show statistics
+        st.subheader("Dataset Statistics")
+        st.dataframe(df.describe())
         
-        if tree_models:
-            fig = make_subplots(rows=1, cols=len(tree_models), 
-                               subplot_titles=list(tree_models.keys()))
-            
-            for i, (model_name, model) in enumerate(tree_models.items(), 1):
-                feature_importance = pd.DataFrame({
-                    'feature': st.session_state.feature_columns,
-                    'importance': model.feature_importances_
-                }).sort_values('importance', ascending=True)
-                
-                fig.add_trace(
-                    go.Bar(
-                        x=feature_importance['importance'],
-                        y=feature_importance['feature'],
-                        orientation='h',
-                        name=model_name
-                    ),
-                    row=1, col=i
-                )
-            
-            fig.update_layout(height=400, showlegend=False)
+        # Show distribution of categorical variables
+        st.subheader("Data Distribution")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            tractor_counts = df['tractor_model'].value_counts()
+            fig = px.bar(
+                x=tractor_counts.index, 
+                y=tractor_counts.values,
+                title="Tractor Model Distribution",
+                labels={'x': 'Tractor Model', 'y': 'Count'}
+            )
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No tree-based models available for feature importance comparison.")
+            
+        with col2:
+            operation_counts = df['operation_type'].value_counts()
+            fig = px.pie(
+                values=operation_counts.values, 
+                names=operation_counts.index,
+                title="Operation Type Distribution"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            soil_counts = df['soil_condition'].value_counts()
+            fig = px.bar(
+                x=soil_counts.index, 
+                y=soil_counts.values,
+                title="Soil Condition Distribution",
+                labels={'x': 'Soil Condition', 'y': 'Count'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col4:
+            fig = px.histogram(
+                df, 
+                x='fuel_per_hectare',
+                title="Fuel per Hectare Distribution",
+                labels={'fuel_per_hectare': 'Liters per Hectare'}
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Download button
+        st.subheader("Download Dataset")
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="Download as CSV",
+            data=csv,
+            file_name="fuel_consumption_data.csv",
+            mime="text/csv"
+        )
 
 # Footer
 st.markdown("""
 <div class="footer">
-    <p>Fuel Consumption Forecasting Dashboard with ML Integration &copy; 2023</p>
-    <p><em>This dashboard includes machine learning capabilities for accurate fuel consumption predictions.</em></p>
+    <p>Synthetic Fuel Consumption Dataset Generator &copy; 2023</p>
+    <p><em>This synthetic data can be used to test and demonstrate the Fuel Consumption Forecasting Dashboard.</em></p>
 </div>
 """, unsafe_allow_html=True)
 
