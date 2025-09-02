@@ -1016,7 +1016,7 @@ elif app_mode == "Prediction History":
 # Footer
 st.markdown("""
 <div class="footer">
-    <p>Fuel Consumption Forecasting Dashboard with ML Integration &copy; 20235</p>
+    <p>Fuel Consumption Forecasting Dashboard with ML Integration &copy; 2025</p>
     <p><em>This dashboard includes machine learning capabilities for accurate fuel consumption predictions.</em></p>
 </div>
 """, unsafe_allow_html=True)
