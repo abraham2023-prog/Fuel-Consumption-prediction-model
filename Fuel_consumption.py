@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
@@ -236,6 +236,37 @@ if app_mode == "Data Upload":
             })
             st.dataframe(col_info)
             
+            # Show some basic visualizations of the data
+            st.write("**Data Distribution**")
+            
+            # Numeric columns distribution
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols:
+                col1, col2 = st.columns(2)
+                with col1:
+                    selected_num_col = st.selectbox("Select numeric column to visualize", numeric_cols)
+                    if selected_num_col:
+                        fig = px.histogram(df, x=selected_num_col, title=f"Distribution of {selected_num_col}")
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Show correlation if enough numeric columns
+                    if len(numeric_cols) > 1:
+                        corr_matrix = df[numeric_cols].corr()
+                        fig = px.imshow(corr_matrix, title="Correlation Matrix")
+                        st.plotly_chart(fig, use_container_width=True)
+            
+            # Categorical columns distribution
+            categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+            if categorical_cols:
+                selected_cat_col = st.selectbox("Select categorical column to visualize", categorical_cols)
+                if selected_cat_col:
+                    value_counts = df[selected_cat_col].value_counts()
+                    fig = px.bar(x=value_counts.index, y=value_counts.values, 
+                                title=f"Distribution of {selected_cat_col}",
+                                labels={'x': selected_cat_col, 'y': 'Count'})
+                    st.plotly_chart(fig, use_container_width=True)
+            
         except Exception as e:
             st.error(f"Error reading file: {e}")
     else:
@@ -247,6 +278,21 @@ if app_mode == "Data Upload":
             st.success("Synthetic data generated!")
             st.write("**First 5 rows of the synthetic dataset:**")
             st.dataframe(df.head())
+            
+            # Show distribution of synthetic data
+            st.write("**Synthetic Data Distribution**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.histogram(df, x='fuel_per_hectare', title="Distribution of Fuel per Hectare")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                tractor_counts = df['tractor_model'].value_counts()
+                fig = px.bar(x=tractor_counts.index, y=tractor_counts.values, 
+                            title="Tractor Model Distribution",
+                            labels={'x': 'Tractor Model', 'y': 'Count'})
+                st.plotly_chart(fig, use_container_width=True)
 
 # Model Training Section
 elif app_mode == "Model Training":
@@ -367,19 +413,21 @@ elif app_mode == "Model Training":
                     for i, (model_name, model) in enumerate(models.items()):
                         with model_tabs[i]:
                             # Create scatter plot of predicted vs actual values
+                            y_pred = predictions[model_name]
+                            
                             fig = go.Figure()
                             
                             fig.add_trace(go.Scatter(
                                 x=y_test,
-                                y=predictions[model_name],
+                                y=y_pred,
                                 mode='markers',
                                 name='Predictions',
                                 marker=dict(color='blue', size=8, opacity=0.6)
                             ))
                             
                             # Add perfect prediction line
-                            max_val = max(max(y_test), max(predictions[model_name]))
-                            min_val = min(min(y_test), min(predictions[model_name]))
+                            max_val = max(max(y_test), max(y_pred))
+                            min_val = min(min(y_test), min(y_pred))
                             fig.add_trace(go.Scatter(
                                 x=[min_val, max_val],
                                 y=[min_val, max_val],
@@ -398,11 +446,11 @@ elif app_mode == "Model Training":
                             st.plotly_chart(fig, use_container_width=True)
                             
                             # Residual plot
-                            residuals = y_test - predictions[model_name]
+                            residuals = y_test - y_pred
                             fig2 = go.Figure()
                             
                             fig2.add_trace(go.Scatter(
-                                x=predictions[model_name],
+                                x=y_pred,
                                 y=residuals,
                                 mode='markers',
                                 name='Residuals',
