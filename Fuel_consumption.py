@@ -283,7 +283,7 @@ if "450" in tractor_model:
 # Footer
 st.markdown("""
 <div class="footer">
-    <p>Fuel Consumption Forecasting Dashboard &copy; 2023</p>
+    <p>Fuel Consumption Forecasting Dashboard &copy; 2025</p>
     <p><em>Note: This dashboard uses a simulation for forecasting. In a real application, this would connect to a backend with machine learning models for more accurate predictions.</em></p>
 </div>
 """, unsafe_allow_html=True)
