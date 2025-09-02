@@ -102,6 +102,82 @@ if 'historical_data' not in st.session_state:
 if 'encoders' not in st.session_state:
     st.session_state.encoders = {}
 
+# Generate synthetic data if no data is uploaded
+def generate_synthetic_data():
+    np.random.seed(42)
+    num_records = 500
+    
+    tractor_models = [
+        "John Deere 6150M (150 HP)", 
+        "New Holland T7.270 (270 HP)", 
+        "Case IH Steiger 450 (450 HP)", 
+        "Massey Ferguson 8700 (250 HP)", 
+        "Kubota M7-131 (131 HP)"
+    ]
+    
+    operation_types = ["Plowing", "Harvesting", "Seeding", "Spraying", "Fertilizing"]
+    soil_conditions = ["Dry", "Normal", "Wet", "Very Wet"]
+    
+    base_consumption = {
+        "Plowing": 12,
+        "Harvesting": 8,
+        "Seeding": 5,
+        "Spraying": 3,
+        "Fertilizing": 4
+    }
+    
+    tractor_factors = {
+        "John Deere 6150M (150 HP)": 1.0,
+        "New Holland T7.270 (270 HP)": 1.2,
+        "Case IH Steiger 450 (450 HP)": 1.5,
+        "Massey Ferguson 8700 (250 HP)": 1.1,
+        "Kubota M7-131 (131 HP)": 0.9
+    }
+    
+    soil_factors = {
+        "Dry": 0.9,
+        "Normal": 1.0,
+        "Wet": 1.2,
+        "Very Wet": 1.5
+    }
+    
+    records = []
+    
+    for _ in range(num_records):
+        tractor = np.random.choice(tractor_models)
+        operation = np.random.choice(operation_types)
+        soil = np.random.choice(soil_conditions)
+        
+        area = round(np.random.uniform(10, 500), 2)
+        
+        if operation in ["Harvesting", "Fertilizing"] and np.random.random() > 0.3:
+            load = np.random.randint(500, 5000)
+        else:
+            load = 0
+            
+        base_cons = base_consumption[operation]
+        tractor_factor = tractor_factors[tractor]
+        soil_factor = soil_factors[soil]
+        load_factor = 1 + (load / 10000)
+        
+        noise = np.random.normal(1, 0.1)
+        fph = base_cons * tractor_factor * soil_factor * load_factor * noise
+        fph = max(1, round(fph, 2))
+        
+        total = round(fph * area, 2)
+        
+        records.append({
+            "area_hectares": area,
+            "tractor_model": tractor,
+            "operation_type": operation,
+            "soil_condition": soil,
+            "load_weight_kg": load,
+            "fuel_per_hectare": fph,
+            "total_fuel_liters": total
+        })
+    
+    return pd.DataFrame(records)
+
 # Sidebar for navigation
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose Mode", 
@@ -149,133 +225,150 @@ if app_mode == "Data Upload":
             })
             st.dataframe(col_info)
             
-            # Check if target variable exists
-            if 'fuel_consumption' not in df.columns and 'fuel_per_hectare' not in df.columns:
-                st.warning("No obvious fuel consumption column found. Please ensure your data includes a target variable.")
-            
         except Exception as e:
             st.error(f"Error reading file: {e}")
+    else:
+        st.info("No data uploaded. Using synthetic data for demonstration.")
+        if st.button("Generate Synthetic Data"):
+            df = generate_synthetic_data()
+            st.session_state.historical_data = df
+            
+            st.success("Synthetic data generated!")
+            st.write("**First 5 rows of the synthetic dataset:**")
+            st.dataframe(df.head())
 
 # Model Training Section
 elif app_mode == "Model Training":
     st.markdown('<h2 class="sub-header">Train Machine Learning Models</h2>', unsafe_allow_html=True)
     
     if st.session_state.historical_data is None:
-        st.warning("Please upload historical data first in the 'Data Upload' section.")
+        st.warning("No data available. Please upload data or generate synthetic data first.")
     else:
         df = st.session_state.historical_data
         
         # Select target variable
         st.write("### Select Target Variable")
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-        target_variable = st.selectbox("Choose the target variable (fuel consumption)", numeric_columns)
         
-        # Select features
-        st.write("### Select Features")
-        feature_columns = st.multiselect("Choose features for the model", 
-                                        [col for col in df.columns if col != target_variable],
-                                        default=[col for col in df.columns if col != target_variable and df[col].nunique() < 20])
-        
-        if not feature_columns:
-            st.warning("Please select at least one feature.")
+        if not numeric_columns:
+            st.error("No numeric columns found in the dataset. Please upload a dataset with numeric columns.")
         else:
-            # Prepare the data
-            X = df[feature_columns].copy()
-            y = df[target_variable]
+            target_variable = st.selectbox("Choose the target variable (fuel consumption)", numeric_columns)
             
-            # Handle categorical variables
-            categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
-            for col in categorical_cols:
-                le = LabelEncoder()
-                X[col] = le.fit_transform(X[col].astype(str))
-                st.session_state.encoders[col] = le
+            # Select features
+            st.write("### Select Features")
+            feature_columns = st.multiselect("Choose features for the model", 
+                                            [col for col in df.columns if col != target_variable],
+                                            default=[col for col in df.columns if col != target_variable and df[col].nunique() < 20])
             
-            # Split the data
-            test_size = st.slider("Test Set Size (%)", 10, 40, 20)
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size/100, random_state=42)
-            
-            # Select models to train
-            st.write("### Select Models to Train")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                train_lr = st.checkbox("Linear Regression", value=True)
-            
-            with col2:
-                train_rf = st.checkbox("Random Forest", value=True)
-            
-            # Train models
-            if st.button("Train Models"):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+            if not feature_columns:
+                st.warning("Please select at least one feature.")
+            else:
+                # Prepare the data
+                X = df[feature_columns].copy()
+                y = df[target_variable]
                 
-                models = {}
-                results = {}
+                # Handle categorical variables
+                categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+                for col in categorical_cols:
+                    le = LabelEncoder()
+                    # Handle missing values and convert to string
+                    X[col] = X[col].fillna('Unknown').astype(str)
+                    X[col] = le.fit_transform(X[col])
+                    st.session_state.encoders[col] = le
                 
-                # Linear Regression
-                if train_lr:
-                    status_text.text("Training Linear Regression...")
-                    lr = LinearRegression()
-                    lr.fit(X_train, y_train)
-                    models['Linear Regression'] = lr
+                # Split the data
+                test_size = st.slider("Test Set Size (%)", 10, 40, 20)
+                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size/100, random_state=42)
+                
+                # Select models to train
+                st.write("### Select Models to Train")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    train_lr = st.checkbox("Linear Regression", value=True)
+                
+                with col2:
+                    train_rf = st.checkbox("Random Forest", value=True)
+                
+                # Train models
+                if st.button("Train Models"):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
                     
-                    # Evaluate
-                    y_pred = lr.predict(X_test)
-                    mae = mean_absolute_error(y_test, y_pred)
-                    r2 = r2_score(y_test, y_pred)
-                    results['Linear Regression'] = {'MAE': mae, 'R2': r2}
-                    progress_bar.progress(50)
-                
-                # Random Forest
-                if train_rf:
-                    status_text.text("Training Random Forest...")
-                    rf = RandomForestRegressor(n_estimators=100, random_state=42)
-                    rf.fit(X_train, y_train)
-                    models['Random Forest'] = rf
+                    models = {}
+                    results = {}
                     
-                    # Evaluate
-                    y_pred = rf.predict(X_test)
-                    mae = mean_absolute_error(y_test, y_pred)
-                    r2 = r2_score(y_test, y_pred)
-                    results['Random Forest'] = {'MAE': mae, 'R2': r2}
-                    progress_bar.progress(100)
-                
-                # Store models and results
-                st.session_state.trained_models = models
-                st.session_state.model_results = results
-                st.session_state.feature_columns = feature_columns
-                st.session_state.target_variable = target_variable
-                
-                status_text.text("Training completed!")
-                
-                # Display results
-                st.write("### Model Performance")
-                results_df = pd.DataFrame.from_dict(results, orient='index')
-                st.dataframe(results_df.style.format("{:.3f}").highlight_min(axis=0, color='#c8e6c9').highlight_max(axis=0, color='#ffcdd2'))
-                
-                # Feature importance for Random Forest
-                if 'Random Forest' in models:
-                    st.write("### Feature Importance (Random Forest)")
-                    feature_importance = pd.DataFrame({
-                        'feature': feature_columns,
-                        'importance': models['Random Forest'].feature_importances_
-                    }).sort_values('importance', ascending=False)
+                    # Linear Regression
+                    if train_lr:
+                        status_text.text("Training Linear Regression...")
+                        lr = LinearRegression()
+                        lr.fit(X_train, y_train)
+                        models['Linear Regression'] = lr
+                        
+                        # Evaluate
+                        y_pred = lr.predict(X_test)
+                        mae = mean_absolute_error(y_test, y_pred)
+                        r2 = r2_score(y_test, y_pred)
+                        results['Linear Regression'] = {'MAE': mae, 'R2': r2}
+                        progress_bar.progress(50)
                     
-                    fig = px.bar(feature_importance, x='importance', y='feature', 
-                                title='Feature Importance for Random Forest Model')
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # Download trained models
-                st.write("### Download Trained Models")
-                for model_name, model in models.items():
-                    buffer = io.BytesIO()
-                    joblib.dump(model, buffer)
-                    st.download_button(
-                        label=f"Download {model_name}",
-                        data=buffer.getvalue(),
-                        file_name=f"{model_name.replace(' ', '_').lower()}_model.pkl",
-                        mime="application/octet-stream"
-                    )
+                    # Random Forest
+                    if train_rf:
+                        status_text.text("Training Random Forest...")
+                        rf = RandomForestRegressor(n_estimators=100, random_state=42)
+                        rf.fit(X_train, y_train)
+                        models['Random Forest'] = rf
+                        
+                        # Evaluate
+                        y_pred = rf.predict(X_test)
+                        mae = mean_absolute_error(y_test, y_pred)
+                        r2 = r2_score(y_test, y_pred)
+                        results['Random Forest'] = {'MAE': mae, 'R2': r2}
+                        progress_bar.progress(100)
+                    
+                    # Store models and results
+                    st.session_state.trained_models = models
+                    st.session_state.model_results = results
+                    st.session_state.feature_columns = feature_columns
+                    st.session_state.target_variable = target_variable
+                    
+                    status_text.text("Training completed!")
+                    
+                    # Display results
+                    st.write("### Model Performance")
+                    results_df = pd.DataFrame.from_dict(results, orient='index')
+                    st.dataframe(results_df.style.format("{:.3f}"))
+                    
+                    # Feature importance for Random Forest
+                    if 'Random Forest' in models:
+                        st.write("### Feature Importance (Random Forest)")
+                        feature_importance = pd.DataFrame({
+                            'feature': feature_columns,
+                            'importance': models['Random Forest'].feature_importances_
+                        }).sort_values('importance', ascending=False)
+                        
+                        # FIXED: Create bar chart with proper data
+                        fig = px.bar(
+                            feature_importance, 
+                            x='importance', 
+                            y='feature', 
+                            orientation='h',
+                            title='Feature Importance for Random Forest Model'
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Download trained models
+                    st.write("### Download Trained Models")
+                    for model_name, model in models.items():
+                        buffer = io.BytesIO()
+                        joblib.dump(model, buffer)
+                        st.download_button(
+                            label=f"Download {model_name}",
+                            data=buffer.getvalue(),
+                            file_name=f"{model_name.replace(' ', '_').lower()}_model.pkl",
+                            mime="application/octet-stream"
+                        )
 
 # Prediction Section
 elif app_mode == "Prediction":
@@ -301,8 +394,9 @@ elif app_mode == "Prediction":
         for feature in st.session_state.feature_columns:
             with cols[col_idx]:
                 if feature in st.session_state.encoders:
-                    # Categorical feature
-                    options = list(st.session_state.encoders[feature].classes_)
+                    # Categorical feature - get original values
+                    le = st.session_state.encoders[feature]
+                    options = le.classes_
                     input_data[feature] = st.selectbox(feature, options)
                 else:
                     # Numerical feature
@@ -397,7 +491,7 @@ elif app_mode == "Model Comparison":
         # Display model performance comparison
         st.write("### Model Performance Metrics")
         results_df = pd.DataFrame.from_dict(st.session_state.model_results, orient='index')
-        st.dataframe(results_df.style.format("{:.3f}").highlight_min(axis=0, color='#c8e6c9').highlight_max(axis=0, color='#ffcdd2'))
+        st.dataframe(results_df.style.format("{:.3f}"))
         
         # Visual comparison
         fig = go.Figure()
