@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
 import io
 
@@ -82,6 +82,13 @@ st.markdown("""
         margin-bottom: 1rem;
         border-left: 5px solid #3498db;
     }
+    .prediction-card {
+        background-color: #e8f5e9;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 5px solid #4caf50;
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -101,6 +108,10 @@ if 'historical_data' not in st.session_state:
     st.session_state.historical_data = None
 if 'encoders' not in st.session_state:
     st.session_state.encoders = {}
+if 'predictions' not in st.session_state:
+    st.session_state.predictions = []
+if 'input_params' not in st.session_state:
+    st.session_state.input_params = []
 
 # Generate synthetic data if no data is uploaded
 def generate_synthetic_data():
@@ -181,7 +192,7 @@ def generate_synthetic_data():
 # Sidebar for navigation
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose Mode", 
-                               ["Data Upload", "Model Training", "Prediction", "Model Comparison"])
+                               ["Data Upload", "Model Training", "Prediction", "Model Comparison", "Prediction History"])
 
 # Data Upload Section
 if app_mode == "Data Upload":
@@ -298,6 +309,7 @@ elif app_mode == "Model Training":
                     
                     models = {}
                     results = {}
+                    predictions = {}
                     
                     # Linear Regression
                     if train_lr:
@@ -310,7 +322,9 @@ elif app_mode == "Model Training":
                         y_pred = lr.predict(X_test)
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
-                        results['Linear Regression'] = {'MAE': mae, 'R2': r2}
+                        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                        results['Linear Regression'] = {'MAE': mae, 'R2': r2, 'RMSE': rmse}
+                        predictions['Linear Regression'] = y_pred
                         progress_bar.progress(50)
                     
                     # Random Forest
@@ -324,12 +338,16 @@ elif app_mode == "Model Training":
                         y_pred = rf.predict(X_test)
                         mae = mean_absolute_error(y_test, y_pred)
                         r2 = r2_score(y_test, y_pred)
-                        results['Random Forest'] = {'MAE': mae, 'R2': r2}
+                        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                        results['Random Forest'] = {'MAE': mae, 'R2': r2, 'RMSE': rmse}
+                        predictions['Random Forest'] = y_pred
                         progress_bar.progress(100)
                     
                     # Store models and results
                     st.session_state.trained_models = models
                     st.session_state.model_results = results
+                    st.session_state.test_predictions = predictions
+                    st.session_state.y_test = y_test
                     st.session_state.feature_columns = feature_columns
                     st.session_state.target_variable = target_variable
                     
@@ -340,6 +358,75 @@ elif app_mode == "Model Training":
                     results_df = pd.DataFrame.from_dict(results, orient='index')
                     st.dataframe(results_df.style.format("{:.3f}"))
                     
+                    # Visualize model performance
+                    st.write("### Prediction vs Actual Values")
+                    
+                    # Create tabs for different models
+                    model_tabs = st.tabs(list(models.keys()))
+                    
+                    for i, (model_name, model) in enumerate(models.items()):
+                        with model_tabs[i]:
+                            # Create scatter plot of predicted vs actual values
+                            fig = go.Figure()
+                            
+                            fig.add_trace(go.Scatter(
+                                x=y_test,
+                                y=predictions[model_name],
+                                mode='markers',
+                                name='Predictions',
+                                marker=dict(color='blue', size=8, opacity=0.6)
+                            ))
+                            
+                            # Add perfect prediction line
+                            max_val = max(max(y_test), max(predictions[model_name]))
+                            min_val = min(min(y_test), min(predictions[model_name]))
+                            fig.add_trace(go.Scatter(
+                                x=[min_val, max_val],
+                                y=[min_val, max_val],
+                                mode='lines',
+                                name='Perfect Prediction',
+                                line=dict(color='red', dash='dash')
+                            ))
+                            
+                            fig.update_layout(
+                                title=f'{model_name} - Predicted vs Actual Values',
+                                xaxis_title='Actual Values',
+                                yaxis_title='Predicted Values',
+                                showlegend=True
+                            )
+                            
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Residual plot
+                            residuals = y_test - predictions[model_name]
+                            fig2 = go.Figure()
+                            
+                            fig2.add_trace(go.Scatter(
+                                x=predictions[model_name],
+                                y=residuals,
+                                mode='markers',
+                                name='Residuals',
+                                marker=dict(color='green', size=8, opacity=0.6)
+                            ))
+                            
+                            # Add zero residual line
+                            fig2.add_trace(go.Scatter(
+                                x=[min_val, max_val],
+                                y=[0, 0],
+                                mode='lines',
+                                name='Zero Residual',
+                                line=dict(color='red', dash='dash')
+                            ))
+                            
+                            fig2.update_layout(
+                                title=f'{model_name} - Residual Plot',
+                                xaxis_title='Predicted Values',
+                                yaxis_title='Residuals (Actual - Predicted)',
+                                showlegend=True
+                            )
+                            
+                            st.plotly_chart(fig2, use_container_width=True)
+                    
                     # Feature importance for Random Forest
                     if 'Random Forest' in models:
                         st.write("### Feature Importance (Random Forest)")
@@ -348,7 +435,7 @@ elif app_mode == "Model Training":
                             'importance': models['Random Forest'].feature_importances_
                         }).sort_values('importance', ascending=False)
                         
-                        # FIXED: Create bar chart with proper data
+                        # Create bar chart with proper data
                         fig = px.bar(
                             feature_importance, 
                             x='importance', 
@@ -431,6 +518,10 @@ elif app_mode == "Prediction":
             # Make prediction
             prediction = best_model.predict(prediction_df)[0]
             
+            # Store prediction and input parameters
+            st.session_state.predictions.append(prediction)
+            st.session_state.input_params.append(input_data.copy())
+            
             # Display results
             col1, col2, col3 = st.columns(3)
             
@@ -480,6 +571,37 @@ elif app_mode == "Prediction":
                     
                     Your predicted consumption is close to the historical average.
                     """)
+            
+            # Show prediction distribution compared to historical data
+            st.write("### Prediction Distribution")
+            
+            fig = go.Figure()
+            
+            # Add historical data distribution
+            fig.add_trace(go.Histogram(
+                x=st.session_state.historical_data[st.session_state.target_variable],
+                name='Historical Data',
+                opacity=0.7,
+                nbinsx=30
+            ))
+            
+            # Add current prediction as a vertical line
+            fig.add_trace(go.Scatter(
+                x=[prediction, prediction],
+                y=[0, 100],
+                mode='lines',
+                name='Your Prediction',
+                line=dict(color='red', width=3, dash='dash')
+            ))
+            
+            fig.update_layout(
+                title='Your Prediction vs Historical Distribution',
+                xaxis_title=st.session_state.target_variable,
+                yaxis_title='Frequency',
+                barmode='overlay'
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
 # Model Comparison Section
 elif app_mode == "Model Comparison":
@@ -544,6 +666,103 @@ elif app_mode == "Model Comparison":
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No tree-based models available for feature importance comparison.")
+
+# Prediction History Section
+elif app_mode == "Prediction History":
+    st.markdown('<h2 class="sub-header">Prediction History</h2>', unsafe_allow_html=True)
+    
+    if not st.session_state.predictions:
+        st.warning("No predictions made yet. Please make some predictions in the 'Prediction' section.")
+    else:
+        # Display prediction history
+        st.write("### Your Prediction History")
+        
+        # Create a DataFrame of predictions
+        history_df = pd.DataFrame({
+            'Prediction': st.session_state.predictions,
+            'Target': st.session_state.target_variable
+        })
+        
+        # Add input parameters
+        for i, params in enumerate(st.session_state.input_params):
+            for key, value in params.items():
+                history_df.loc[i, key] = value
+        
+        st.dataframe(history_df)
+        
+        # Visualize prediction history
+        st.write("### Prediction Trend")
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=list(range(1, len(st.session_state.predictions) + 1)),
+            y=st.session_state.predictions,
+            mode='lines+markers',
+            name='Predictions',
+            line=dict(color='blue', width=2),
+            marker=dict(size=8)
+        ))
+        
+        # Add average line if we have historical data
+        if st.session_state.historical_data is not None:
+            avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
+            fig.add_trace(go.Scatter(
+                x=[1, len(st.session_state.predictions)],
+                y=[avg_consumption, avg_consumption],
+                mode='lines',
+                name='Historical Average',
+                line=dict(color='red', dash='dash', width=2)
+            ))
+        
+        fig.update_layout(
+            title='Your Prediction History',
+            xaxis_title='Prediction Number',
+            yaxis_title=st.session_state.target_variable,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Show distribution of predictions
+        st.write("### Prediction Distribution")
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Histogram(
+            x=st.session_state.predictions,
+            name='Your Predictions',
+            nbinsx=15,
+            opacity=0.7
+        ))
+        
+        # Add historical data distribution if available
+        if st.session_state.historical_data is not None:
+            fig.add_trace(go.Histogram(
+                x=st.session_state.historical_data[st.session_state.target_variable],
+                name='Historical Data',
+                nbinsx=30,
+                opacity=0.5
+            ))
+        
+        fig.update_layout(
+            title='Distribution of Your Predictions',
+            xaxis_title=st.session_state.target_variable,
+            yaxis_title='Frequency',
+            barmode='overlay'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Download prediction history
+        st.write("### Download Prediction History")
+        csv = history_df.to_csv(index=False)
+        st.download_button(
+            label="Download Prediction History as CSV",
+            data=csv,
+            file_name="prediction_history.csv",
+            mime="text/csv"
+        )
 
 # Footer
 st.markdown("""
