@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 import joblib
@@ -89,6 +89,13 @@ st.markdown("""
         border-left: 5px solid #4caf50;
         margin-bottom: 1rem;
     }
+    .preprocessing-card {
+        background-color: #fff3e0;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border-left: 5px solid #ff9800;
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -112,6 +119,8 @@ if 'predictions' not in st.session_state:
     st.session_state.predictions = []
 if 'input_params' not in st.session_state:
     st.session_state.input_params = []
+if 'scalers' not in st.session_state:
+    st.session_state.scalers = {}
 
 # Generate synthetic data if no data is uploaded
 def generate_synthetic_data():
@@ -192,7 +201,7 @@ def generate_synthetic_data():
 # Sidebar for navigation
 st.sidebar.title("Navigation")
 app_mode = st.sidebar.selectbox("Choose Mode", 
-                               ["Data Upload", "Model Training", "Prediction", "Model Comparison", "Prediction History"])
+                               ["Data Upload", "Data Preprocessing", "Model Training", "Prediction", "Model Comparison", "Prediction History"])
 
 # Data Upload Section
 if app_mode == "Data Upload":
@@ -293,6 +302,142 @@ if app_mode == "Data Upload":
                             title="Tractor Model Distribution",
                             labels={'x': 'Tractor Model', 'y': 'Count'})
                 st.plotly_chart(fig, use_container_width=True)
+
+# Data Preprocessing Section
+elif app_mode == "Data Preprocessing":
+    st.markdown('<h2 class="sub-header">Data Preprocessing</h2>', unsafe_allow_html=True)
+    
+    if st.session_state.historical_data is None:
+        st.warning("No data available. Please upload data or generate synthetic data first.")
+    else:
+        df = st.session_state.historical_data
+        
+        st.markdown('<div class="preprocessing-card">', unsafe_allow_html=True)
+        st.write("""
+        ### Why Preprocess Data?
+        Data preprocessing is a crucial step in machine learning. It helps to:
+        - Improve model performance
+        - Reduce training time
+        - Handle outliers and missing values
+        - Ensure features are on similar scales
+        """)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Show data before preprocessing
+        st.write("### Original Data")
+        st.dataframe(df.head())
+        
+        # Select preprocessing options
+        st.write("### Preprocessing Options")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Handle Missing Values**")
+            handle_missing = st.checkbox("Handle missing values", value=True)
+            if handle_missing:
+                missing_strategy = st.selectbox("Strategy for missing values", 
+                                              ["Drop rows", "Fill with mean", "Fill with median"])
+        
+        with col2:
+            st.write("**Feature Scaling**")
+            apply_scaling = st.checkbox("Apply feature scaling", value=True)
+            if apply_scaling:
+                scaling_method = st.selectbox("Scaling method", 
+                                           ["Standardization (Z-score)", "Normalization (Min-Max)", "Robust Scaling"])
+        
+        # Outlier handling
+        st.write("**Outlier Handling**")
+        handle_outliers = st.checkbox("Handle outliers", value=False)
+        if handle_outliers:
+            outlier_method = st.selectbox("Outlier handling method", 
+                                       ["Remove outliers", "Cap outliers", "Transform (log)"])
+        
+        # Apply preprocessing
+        if st.button("Apply Preprocessing"):
+            processed_df = df.copy()
+            
+            # Handle missing values
+            if handle_missing:
+                numeric_cols = processed_df.select_dtypes(include=[np.number]).columns.tolist()
+                
+                if missing_strategy == "Drop rows":
+                    processed_df = processed_df.dropna()
+                elif missing_strategy == "Fill with mean":
+                    for col in numeric_cols:
+                        if processed_df[col].isnull().any():
+                            processed_df[col].fillna(processed_df[col].mean(), inplace=True)
+                elif missing_strategy == "Fill with median":
+                    for col in numeric_cols:
+                        if processed_df[col].isnull().any():
+                            processed_df[col].fillna(processed_df[col].median(), inplace=True)
+            
+            # Handle outliers
+            if handle_outliers:
+                numeric_cols = processed_df.select_dtypes(include=[np.number]).columns.tolist()
+                
+                for col in numeric_cols:
+                    if outlier_method == "Remove outliers":
+                        Q1 = processed_df[col].quantile(0.25)
+                        Q3 = processed_df[col].quantile(0.75)
+                        IQR = Q3 - Q1
+                        lower_bound = Q1 - 1.5 * IQR
+                        upper_bound = Q3 + 1.5 * IQR
+                        processed_df = processed_df[(processed_df[col] >= lower_bound) & (processed_df[col] <= upper_bound)]
+                    elif outlier_method == "Cap outliers":
+                        Q1 = processed_df[col].quantile(0.25)
+                        Q3 = processed_df[col].quantile(0.75)
+                        IQR = Q3 - Q1
+                        lower_bound = Q1 - 1.5 * IQR
+                        upper_bound = Q3 + 1.5 * IQR
+                        processed_df[col] = processed_df[col].clip(lower_bound, upper_bound)
+                    elif outlier_method == "Transform (log)":
+                        # Add small constant to avoid log(0)
+                        processed_df[col] = np.log1p(processed_df[col])
+            
+            # Apply scaling
+            scalers = {}
+            if apply_scaling:
+                numeric_cols = processed_df.select_dtypes(include=[np.number]).columns.tolist()
+                
+                for col in numeric_cols:
+                    if scaling_method == "Standardization (Z-score)":
+                        scaler = StandardScaler()
+                    elif scaling_method == "Normalization (Min-Max)":
+                        scaler = MinMaxScaler()
+                    elif scaling_method == "Robust Scaling":
+                        scaler = RobustScaler()
+                    
+                    processed_df[col] = scaler.fit_transform(processed_df[[col]]).flatten()
+                    scalers[col] = scaler
+            
+            # Store processed data and scalers
+            st.session_state.historical_data = processed_df
+            st.session_state.scalers = scalers
+            
+            st.success("Data preprocessing completed!")
+            
+            # Show processed data
+            st.write("### Processed Data")
+            st.dataframe(processed_df.head())
+            
+            # Show comparison of distributions
+            st.write("### Distribution Comparison")
+            
+            # Select a column to compare
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            if numeric_cols:
+                selected_col = st.selectbox("Select column to compare", numeric_cols)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig = px.histogram(df, x=selected_col, title=f"Original Distribution of {selected_col}")
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    fig = px.histogram(processed_df, x=selected_col, title=f"Processed Distribution of {selected_col}")
+                    st.plotly_chart(fig, use_container_width=True)
 
 # Model Training Section
 elif app_mode == "Model Training":
@@ -563,8 +708,21 @@ elif app_mode == "Prediction":
                     prediction_df[col] = prediction_df[col].apply(lambda x: x if x in le.classes_ else le.classes_[0])
                     prediction_df[col] = le.transform(prediction_df[col])
             
+            # Apply scaling if scalers are available
+            if st.session_state.scalers:
+                for col in prediction_df.columns:
+                    if col in st.session_state.scalers:
+                        scaler = st.session_state.scalers[col]
+                        prediction_df[col] = scaler.transform(prediction_df[[col]]).flatten()
+            
             # Make prediction
             prediction = best_model.predict(prediction_df)[0]
+            
+            # If scaling was applied, we need to inverse transform the prediction
+            if st.session_state.target_variable in st.session_state.scalers:
+                scaler = st.session_state.scalers[st.session_state.target_variable]
+                # For inverse transform, we need to reshape the prediction
+                prediction = scaler.inverse_transform([[prediction]])[0][0]
             
             # Store prediction and input parameters
             st.session_state.predictions.append(prediction)
@@ -597,7 +755,15 @@ elif app_mode == "Prediction":
             
             # Compare with average from historical data
             if st.session_state.historical_data is not None:
-                avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
+                # If scaling was applied, we need to get the original values
+                if st.session_state.target_variable in st.session_state.scalers:
+                    scaler = st.session_state.scalers[st.session_state.target_variable]
+                    original_values = scaler.inverse_transform(
+                        st.session_state.historical_data[[st.session_state.target_variable]]
+                    ).flatten()
+                    avg_consumption = np.mean(original_values)
+                else:
+                    avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
                 
                 if prediction > avg_consumption * 1.2:
                     st.warning(f"""
@@ -626,12 +792,25 @@ elif app_mode == "Prediction":
             fig = go.Figure()
             
             # Add historical data distribution
-            fig.add_trace(go.Histogram(
-                x=st.session_state.historical_data[st.session_state.target_variable],
-                name='Historical Data',
-                opacity=0.7,
-                nbinsx=30
-            ))
+            if st.session_state.target_variable in st.session_state.scalers:
+                # Use original values if scaling was applied
+                scaler = st.session_state.scalers[st.session_state.target_variable]
+                historical_values = scaler.inverse_transform(
+                    st.session_state.historical_data[[st.session_state.target_variable]]
+                ).flatten()
+                fig.add_trace(go.Histogram(
+                    x=historical_values,
+                    name='Historical Data',
+                    opacity=0.7,
+                    nbinsx=30
+                ))
+            else:
+                fig.add_trace(go.Histogram(
+                    x=st.session_state.historical_data[st.session_state.target_variable],
+                    name='Historical Data',
+                    opacity=0.7,
+                    nbinsx=30
+                ))
             
             # Add current prediction as a vertical line
             fig.add_trace(go.Scatter(
@@ -754,7 +933,16 @@ elif app_mode == "Prediction History":
         
         # Add average line if we have historical data
         if st.session_state.historical_data is not None:
-            avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
+            # If scaling was applied, we need to get the original values
+            if st.session_state.target_variable in st.session_state.scalers:
+                scaler = st.session_state.scalers[st.session_state.target_variable]
+                original_values = scaler.inverse_transform(
+                    st.session_state.historical_data[[st.session_state.target_variable]]
+                ).flatten()
+                avg_consumption = np.mean(original_values)
+            else:
+                avg_consumption = st.session_state.historical_data[st.session_state.target_variable].mean()
+                
             fig.add_trace(go.Scatter(
                 x=[1, len(st.session_state.predictions)],
                 y=[avg_consumption, avg_consumption],
@@ -786,12 +974,25 @@ elif app_mode == "Prediction History":
         
         # Add historical data distribution if available
         if st.session_state.historical_data is not None:
-            fig.add_trace(go.Histogram(
-                x=st.session_state.historical_data[st.session_state.target_variable],
-                name='Historical Data',
-                nbinsx=30,
-                opacity=0.5
-            ))
+            # If scaling was applied, we need to get the original values
+            if st.session_state.target_variable in st.session_state.scalers:
+                scaler = st.session_state.scalers[st.session_state.target_variable]
+                historical_values = scaler.inverse_transform(
+                    st.session_state.historical_data[[st.session_state.target_variable]]
+                ).flatten()
+                fig.add_trace(go.Histogram(
+                    x=historical_values,
+                    name='Historical Data',
+                    nbinsx=30,
+                    opacity=0.5
+                ))
+            else:
+                fig.add_trace(go.Histogram(
+                    x=st.session_state.historical_data[st.session_state.target_variable],
+                    name='Historical Data',
+                    nbinsx=30,
+                    opacity=0.5
+                ))
         
         fig.update_layout(
             title='Distribution of Your Predictions',
@@ -815,7 +1016,7 @@ elif app_mode == "Prediction History":
 # Footer
 st.markdown("""
 <div class="footer">
-    <p>Fuel Consumption Forecasting Dashboard with ML Integration (AB) &copy; 2025</p>
+    <p>Fuel Consumption Forecasting Dashboard with ML Integration &copy; 2023</p>
     <p><em>This dashboard includes machine learning capabilities for accurate fuel consumption predictions.</em></p>
 </div>
 """, unsafe_allow_html=True)
